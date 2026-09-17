@@ -104,7 +104,16 @@ module Google
               received_entries[entry.index] = entry
             end
           end
-          [received_entries.values, nil, cookies]
+          statuses = entries.map.with_index do |_, i|
+            received_entries[i] || Google::Cloud::Bigtable::V2::MutateRowsResponse::Entry.new(
+              index: i,
+              status: Google::Rpc::Status.new(
+                code: Google::Rpc::Code::INTERNAL,
+                message: "Missing entry in MutateRows response"
+              )
+            )
+          end
+          [statuses, nil, cookies]
         rescue GRPC::BadStatus => e
           info = e.status_details.find { |d| d.is_a? Google::Rpc::RetryInfo }
           delay = if info&.retry_delay
