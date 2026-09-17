@@ -42,7 +42,7 @@ describe Google::Cloud::Bigtable::Table, :read_rows, :mock_bigtable do
 
     mock.expect :read_rows, get_res,
                 table_name: table_path(instance_id, table_id),
-                rows: Google::Cloud::Bigtable::V2::RowSet.new,
+                rows: Google::Cloud::Bigtable::V2::RowSet.new(row_ranges: [Google::Cloud::Bigtable::V2::RowRange.new]),
                 filter: nil,
                 rows_limit: nil,
                 app_profile_id: nil
@@ -271,5 +271,272 @@ describe Google::Cloud::Bigtable::Table, :read_rows, :mock_bigtable do
 
     filter = table.filter.key("user-*")
     table.read_rows(filter: filter).map {|v| v}
+  end
+
+  it "no retry after reading all the rows" do
+    cf = Google::Protobuf::StringValue.new(:value => "cf")
+    q = Google::Protobuf::BytesValue.new(:value => "q")
+    cell_chunk = Google::Cloud::Bigtable::V2::ReadRowsResponse::CellChunk.new(
+      :row_key => "a",
+      :family_name => cf,
+      :qualifier => q,
+      :value => "v",
+      :timestamp_micros => -1,
+      :commit_row => true
+    )
+
+    read_response = [Google::Cloud::Bigtable::V2::ReadRowsResponse.new(chunks: [cell_chunk]), "error"]
+
+    mock_itr = OpenStruct.new(
+      read_response: read_response,
+    )
+
+    def mock_itr.each
+      read_response.each do |res|
+        if res == "error"
+          raise GRPC::DeadlineExceeded, "Deadline exceeded"
+        else
+          yield res
+        end
+      end
+    end
+
+    mock = OpenStruct.new(
+      mock_itr: mock_itr,
+      retry_count: 0
+    )
+
+    def mock.read_rows _args
+      self.retry_count += 1
+      mock_itr
+    end
+
+    expected_row = Google::Cloud::Bigtable::Row.new("a")
+    expected_row.cells["cf"] << Google::Cloud::Bigtable::Row::Cell.new(
+      "cf", "q", -1, "v"
+    )
+
+    bigtable.service.mocked_client = mock
+    table = bigtable.table(instance_id, table_id)
+
+    rows = table.read_rows(keys: ["A"]).map {|v| v}
+
+    _(mock.retry_count).must_equal 1
+    _(rows.length).must_equal 1
+    _(rows.first).must_equal expected_row
+  end
+
+  it "no retry after reading all the ranges" do
+    cf = Google::Protobuf::StringValue.new(:value => "cf")
+    q = Google::Protobuf::BytesValue.new(:value => "q")
+    cell_chunk = Google::Cloud::Bigtable::V2::ReadRowsResponse::CellChunk.new(
+      :row_key => "g",
+      :family_name => cf,
+      :qualifier => q,
+      :value => "v",
+      :timestamp_micros => -1,
+      :commit_row => true
+    )
+
+    read_response = [Google::Cloud::Bigtable::V2::ReadRowsResponse.new(chunks: [cell_chunk]), "error"]
+
+    mock_itr = OpenStruct.new(
+      read_response: read_response,
+    )
+
+    def mock_itr.each
+      read_response.each do |res|
+        if res == "error"
+          raise GRPC::DeadlineExceeded, "Deadline exceeded"
+        else
+          yield res
+        end
+      end
+    end
+
+    mock = OpenStruct.new(
+      mock_itr: mock_itr,
+      retry_count: 0
+    )
+
+    def mock.read_rows _args
+      self.retry_count += 1
+      mock_itr
+    end
+
+    expected_row = Google::Cloud::Bigtable::Row.new("g")
+    expected_row.cells["cf"] << Google::Cloud::Bigtable::Row::Cell.new(
+      "cf", "q", -1, "v"
+    )
+
+    bigtable.service.mocked_client = mock
+    table = bigtable.table(instance_id, table_id)
+
+    range1 = table.new_row_range.from("a").to("b")
+    range2 = table.new_row_range.between("d", "f")
+
+    rows = table.read_rows(ranges: [range1, range2]).map {|v| v}
+
+    _(mock.retry_count).must_equal 1
+    _(rows.length).must_equal 1
+    _(rows.first).must_equal expected_row
+  end
+
+  it "no retry after reading limit number of rows" do
+    cf = Google::Protobuf::StringValue.new(:value => "cf")
+    q = Google::Protobuf::BytesValue.new(:value => "q")
+    cell_chunk = Google::Cloud::Bigtable::V2::ReadRowsResponse::CellChunk.new(
+      :row_key => "a",
+      :family_name => cf,
+      :qualifier => q,
+      :value => "v",
+      :timestamp_micros => -1,
+      :commit_row => true
+    )
+
+    read_response = [Google::Cloud::Bigtable::V2::ReadRowsResponse.new(chunks: [cell_chunk]), "error"]
+
+    mock_itr = OpenStruct.new(
+      read_response: read_response,
+    )
+
+    def mock_itr.each
+      read_response.each do |res|
+        if res == "error"
+          raise GRPC::DeadlineExceeded, "Deadline exceeded"
+        else
+          yield res
+        end
+      end
+    end
+
+    mock = OpenStruct.new(
+      mock_itr: mock_itr,
+      retry_count: 0
+    )
+
+    def mock.read_rows _args
+      self.retry_count += 1
+      mock_itr
+    end
+
+    expected_row = Google::Cloud::Bigtable::Row.new("a")
+    expected_row.cells["cf"] << Google::Cloud::Bigtable::Row::Cell.new(
+      "cf", "q", -1, "v"
+    )
+
+    bigtable.service.mocked_client = mock
+    table = bigtable.table(instance_id, table_id)
+
+    rows = table.read_rows(limit: 1).map {|v| v}
+
+    _(mock.retry_count).must_equal 1
+    _(rows.length).must_equal 1
+    _(rows.first).must_equal expected_row
+  end
+
+  it "reports an error if the client detects that the server sent row keys out of order" do
+    mock = Minitest::Mock.new
+    bigtable.service.mocked_client = mock
+    table = bigtable.table(instance_id, table_id)
+
+    chunks = [
+      Google::Cloud::Bigtable::V2::ReadRowsResponse::CellChunk.new(
+        row_key: "row-2",
+        family_name: Google::Protobuf::StringValue.new(value: "cf"),
+        qualifier: Google::Protobuf::BytesValue.new(value: "cq"),
+        value: "v",
+        commit_row: true
+      ),
+      Google::Cloud::Bigtable::V2::ReadRowsResponse::CellChunk.new(
+        row_key: "row-1", # Out of order
+        family_name: Google::Protobuf::StringValue.new(value: "cf"),
+        qualifier: Google::Protobuf::BytesValue.new(value: "cq"),
+        value: "v",
+        commit_row: true
+      )
+    ]
+    responses = [
+      Google::Cloud::Bigtable::V2::ReadRowsResponse.new(chunks: [chunks[0]]),
+      Google::Cloud::Bigtable::V2::ReadRowsResponse.new(chunks: [chunks[1]])
+    ]
+
+    mock.expect :read_rows, responses,
+                table_name: table_path(instance_id, table_id),
+                rows: Google::Cloud::Bigtable::V2::RowSet.new(row_ranges: [Google::Cloud::Bigtable::V2::RowRange.new]),
+                filter: nil,
+                rows_limit: nil,
+                app_profile_id: nil
+
+    err = assert_raises Google::Cloud::Error do
+      table.read_rows.to_a
+    end
+    _(err.message).must_match /Out of order row key/
+  end
+
+  it "resumes a read from the last scanned row key after a retryable error" do
+    mock = Minitest::Mock.new
+    bigtable.service.mocked_client = mock
+    table = bigtable.table(instance_id, table_id)
+
+    first_mock_responses = [
+      Google::Cloud::Bigtable::V2::ReadRowsResponse.new(last_scanned_row_key: ""),
+      "error"
+    ]
+    first_mock_itr = OpenStruct.new(read_response: first_mock_responses)
+    def first_mock_itr.each
+      self.read_response.each do |res|
+        raise GRPC::DeadlineExceeded, "Deadline exceeded" if res == "error"
+        yield res
+      end
+    end
+
+    second_mock_responses = [
+      Google::Cloud::Bigtable::V2::ReadRowsResponse.new(last_scanned_row_key: "row-a"),
+      "error"
+    ]
+    second_mock_itr = OpenStruct.new(read_response: second_mock_responses)
+    def second_mock_itr.each
+      self.read_response.each do |res|
+        raise GRPC::DeadlineExceeded, "Deadline exceeded" if res == "error"
+        yield res
+      end
+    end
+
+    final_chunk = Google::Cloud::Bigtable::V2::ReadRowsResponse::CellChunk.new(
+      row_key: "row-b",
+      family_name: Google::Protobuf::StringValue.new(value: "cf"),
+      qualifier: Google::Protobuf::BytesValue.new(value: "cq"),
+      value: "v",
+      commit_row: true
+    )
+    final_response = [Google::Cloud::Bigtable::V2::ReadRowsResponse.new(chunks: [final_chunk])]
+
+    mock.expect :read_rows, first_mock_itr,
+                table_name: table_path(instance_id, table_id),
+                rows: Google::Cloud::Bigtable::V2::RowSet.new(row_ranges: [Google::Cloud::Bigtable::V2::RowRange.new]),
+                filter: nil,
+                rows_limit: nil,
+                app_profile_id: nil
+
+    mock.expect :read_rows, second_mock_itr,
+                table_name: table_path(instance_id, table_id),
+                rows: Google::Cloud::Bigtable::V2::RowSet.new(row_ranges: [Google::Cloud::Bigtable::V2::RowRange.new]),
+                filter: nil,
+                rows_limit: nil,
+                app_profile_id: nil
+
+    mock.expect :read_rows, final_response,
+                table_name: table_path(instance_id, table_id),
+                rows: Google::Cloud::Bigtable::V2::RowSet.new(
+                  row_ranges: [Google::Cloud::Bigtable::V2::RowRange.new(start_key_open: "row-a")]
+                ),
+                filter: nil,
+                rows_limit: nil,
+                app_profile_id: nil
+
+    rows = table.read_rows.to_a
+    _(rows.map(&:key)).must_equal ["row-b"]
+    mock.verify
   end
 end

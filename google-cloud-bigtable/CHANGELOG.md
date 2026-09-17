@@ -1,5 +1,61 @@
 # Release History
 
+### 2.13.0 (2026-06-11)
+
+#### Features
+
+* Update minimum Ruby to 3.2 ([#33981](https://github.com/googleapis/google-cloud-ruby/issues/33981)) 
+
+### 2.12.3 (2025-12-16)
+
+#### Documentation
+
+* Fixing markdown mistakes in samples README ([#32272](https://github.com/googleapis/google-cloud-ruby/issues/32272)) 
+
+### 2.12.2 (2025-11-04)
+
+#### Documentation
+
+* add warning about loading unvalidated credentials ([#32121](https://github.com/googleapis/google-cloud-ruby/issues/32121)) 
+
+### 2.12.1 (2025-08-12)
+
+#### Bug Fixes
+
+* Fix mutate rows logic to handle errors ([#30766](https://github.com/googleapis/google-cloud-ruby/issues/30766)) 
+
+### 2.12.0 (2025-02-25)
+
+#### Features
+
+* Provide easier access to the admin clients ([#28917](https://github.com/googleapis/google-cloud-ruby/issues/28917)) 
+* Support for setting the universe domain ([#29173](https://github.com/googleapis/google-cloud-ruby/issues/29173)) 
+
+### 2.11.1 (2024-12-12)
+
+#### Bug Fixes
+
+* Avoid a potential protobuf memory leak ([#28101](https://github.com/googleapis/google-cloud-ruby/issues/28101)) 
+
+### 2.11.0 (2024-07-09)
+
+#### Features
+
+* compatibility with GA releases of underlying versioned clients ([#26361](https://github.com/googleapis/google-cloud-ruby/issues/26361)) 
+
+### 2.10.2 (2024-04-30)
+
+#### Bug Fixes
+
+* Fixes for leaving predicate unset in check_and_mutate_row 
+* Fixes for using a preconfigured GRPC channel as credentials 
+
+### 2.10.1 (2024-03-19)
+
+#### Bug Fixes
+
+* fix read rows retry so it doesn't trigger a full table scan in t… ([#25391](https://github.com/googleapis/google-cloud-ruby/issues/25391)) 
+
 ### 2.10.0 (2024-03-07)
 
 #### Features

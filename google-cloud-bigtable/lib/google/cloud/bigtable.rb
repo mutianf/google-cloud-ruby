@@ -27,6 +27,9 @@ module Google
     # See {file:OVERVIEW.md Bigtable Overview}.
     #
     module Bigtable
+      # rubocop:disable Metrics/CyclomaticComplexity
+      # rubocop:disable Metrics/AbcSize
+
       ##
       # Service for managing Cloud Bigtable instances and tables and for reading from and
       # writing to Bigtable tables.
@@ -40,20 +43,20 @@ module Google
       #   be one of the following types:
       #   `Google::Auth::Credentials` uses the properties of its represented keyfile for
       #   authenticating requests made by this client.
-      #   `String` will be treated as the path to the keyfile to use to construct
-      #   credentials for this client.
-      #   `Hash` will be treated as the contents of a keyfile to use to construct
-      #   credentials for this client.
       #   `GRPC::Core::Channel` will be used to make calls through.
       #   `GRPC::Core::ChannelCredentials` for the setting up the gRPC client. The channel credentials
       #   should already be composed with a `GRPC::Core::CallCredentials` object.
       #   `Proc` will be used as an updater_proc for the gRPC channel. The proc transforms the
       #   metadata for requests, generally, to give OAuth credentials.
-      # @param [String] endpoint Override of the endpoint host name. Optional.
+      #   @note Warning: Passing a `String` to a keyfile path or a `Hash` of credentials
+      #     is deprecated. Providing an unvalidated credential configuration to
+      #     Google APIs can compromise the security of your systems and data.
+      # @param universe_domain [String] Override of the universe domain. Optional.
+      # @param endpoint [String] Override of the endpoint host name. Optional.
       #   If the param is nil, uses the default endpoint.
-      # @param [String] endpoint_admin Override of the admin service endpoint host name. Optional.
+      # @param endpoint_admin [String] Override of the admin service endpoint host name. Optional.
       #   If the param is nil, uses the default admin endpoint.
-      # @param [String] emulator_host Bigtable emulator host. Optional.
+      # @param emulator_host [String] Bigtable emulator host. Optional.
       #   If the parameter is nil, uses the value of the `emulator_host` config.
       # @param scope [Array<String>]
       #   The OAuth 2.0 scopes controlling the set of resources and operations
@@ -74,10 +77,9 @@ module Google
       #
       #   client = Google::Cloud::Bigtable.new
       #
-      # rubocop:disable Metrics/CyclomaticComplexity
-      # rubocop:disable Metrics/AbcSize
       def self.new project_id: nil,
                    credentials: nil,
+                   universe_domain: nil,
                    emulator_host: nil,
                    scope: nil,
                    endpoint: nil,
@@ -86,6 +88,7 @@ module Google
                    channel_selection: nil,
                    channel_count: nil
         project_id ||= default_project_id
+        universe_domain ||= configure.universe_domain
         scope ||= configure.scope
         timeout ||= configure.timeout
         emulator_host ||= configure.emulator_host
@@ -100,15 +103,17 @@ module Google
         project_id = resolve_project_id project_id, credentials
         raise ArgumentError, "project_id is missing" if project_id.empty?
 
-        service = Bigtable::Service.new project_id, credentials, host: endpoint,
-                                        host_admin: endpoint_admin, timeout: timeout,
+        service = Bigtable::Service.new project_id, credentials,
+                                        universe_domain: universe_domain,
+                                        host: endpoint,
+                                        host_admin: endpoint_admin,
+                                        timeout: timeout,
                                         channel_selection: channel_selection,
                                         channel_count: channel_count
         Bigtable::Project.new service
       end
       # rubocop:enable Metrics/CyclomaticComplexity
       # rubocop:enable Metrics/AbcSize
-
 
       ##
       # Configure the Google Cloud Bigtable library.
@@ -163,6 +168,7 @@ module Google
       def self.resolve_credentials given_credentials, scope
         credentials = given_credentials || default_credentials(scope: scope)
         return credentials if credentials.is_a? Google::Auth::Credentials
+        return credentials if credentials.is_a? GRPC::Core::Channel
         Bigtable::Credentials.new credentials, scope: scope
       end
 
