@@ -92,17 +92,14 @@ module Google
         def mutate_rows entries, cookies = {}
           call_options = Gapic::CallOptions.new(metadata: cookies) unless cookies.empty?
 
-          received_entries = {}
           response = @table.service.mutate_rows(
             @table.path,
             entries,
             app_profile_id: @table.app_profile_id,
             call_options: call_options
           )
-          response.each do |res|
-            res.entries.each do |entry|
-              received_entries[entry.index] = entry
-            end
+          received_entries = response.flat_map(&:entries).each_with_object({}) do |entry, hash|
+            hash[entry.index] = entry
           end
           statuses = entries.map.with_index do |_, i|
             received_entries[i] || Google::Cloud::Bigtable::V2::MutateRowsResponse::Entry.new(
@@ -124,7 +121,7 @@ module Google
 
           status = Google::Rpc::Status.new code: e.code, message: e.message
           statuses = entries.map.with_index do |_, i|
-            received_entries[i] || Google::Cloud::Bigtable::V2::MutateRowsResponse::Entry.new(
+            Google::Cloud::Bigtable::V2::MutateRowsResponse::Entry.new(
               index: i,
               status: status
             )

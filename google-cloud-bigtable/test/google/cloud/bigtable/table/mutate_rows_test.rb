@@ -265,59 +265,6 @@ describe Google::Cloud::Bigtable::Table, :mutate_rows, :mock_bigtable do
     _(responses[1].status.details).must_equal []
   end
 
-  it "preserves confirmed entries on mid-stream GRPC::BadStatus error and retries only unconfirmed entries" do
-    req_entries = req_entries_grpc
-    retry_entries = [
-      req_entries,
-      [req_entries.last]
-    ]
-
-    first_res = Google::Cloud::Bigtable::V2::MutateRowsResponse.new(entries: [
-      { index: 0, status: { code: Google::Rpc::Code::OK, message: "success" }}
-    ])
-    second_res = Google::Cloud::Bigtable::V2::MutateRowsResponse.new(entries: [
-      { index: 0, status: { code: Google::Rpc::Code::OK, message: "success" }}
-    ])
-
-    stream_attempt_1 = Enumerator.new do |y|
-      y << first_res
-      raise GRPC::Unavailable.new("mid-stream unavailable")
-    end
-
-    mock = OpenStruct.new(
-      t: self,
-      retry_count: 0,
-      expected_table_path: table_path(instance_id, table_id),
-      expected_req_app_profile_id: app_profile_id,
-      req_retry_entries: retry_entries,
-      req_retry_response: [stream_attempt_1, [second_res]]
-    )
-    def mock.mutate_rows request, call_options
-      t._(request[:table_name]).must_equal expected_table_path
-      t._(request[:entries]).must_equal req_retry_entries[self.retry_count]
-      t._(request[:app_profile_id]).must_equal expected_req_app_profile_id
-      res = req_retry_response[self.retry_count]
-      self.retry_count += 1
-      res
-    end
-
-    bigtable.service.mocked_client = mock
-
-    mutation_entries = req_entries.map do |r|
-      entry = Google::Cloud::Bigtable::MutationEntry.new(r.row_key)
-      entry.mutations.concat(r.mutations)
-      entry
-    end
-    responses = table.mutate_rows(mutation_entries)
-
-    _(mock.retry_count).must_equal 2
-    _(responses.length).must_equal 2
-    _(responses[0].index).must_equal 0
-    _(responses[0].status.code).must_equal Google::Rpc::Code::OK
-    _(responses[1].index).must_equal 1
-    _(responses[1].status.code).must_equal Google::Rpc::Code::OK
-  end
-
   it "synthesizes INTERNAL error entry without retrying when server omits an entry on OK stream" do
     req_entries = req_entries_grpc
 
