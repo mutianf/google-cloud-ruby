@@ -264,4 +264,45 @@ describe Google::Cloud::Bigtable::Table, :mutate_rows, :mock_bigtable do
     _(responses[1].status.message).must_equal "success"
     _(responses[1].status.details).must_equal []
   end
+
+  it "synthesizes INTERNAL error entry without retrying when server omits an entry on OK stream" do
+    req_entries = req_entries_grpc
+
+    res = Google::Cloud::Bigtable::V2::MutateRowsResponse.new(entries: [
+      { index: 0, status: { code: Google::Rpc::Code::OK, message: "success" }}
+    ])
+
+    mock = OpenStruct.new(
+      t: self,
+      call_count: 0,
+      expected_table_path: table_path(instance_id, table_id),
+      expected_req_app_profile_id: app_profile_id,
+      expected_entries: req_entries,
+      response: [res]
+    )
+    def mock.mutate_rows request, call_options
+      t._(request[:table_name]).must_equal expected_table_path
+      t._(request[:entries]).must_equal expected_entries
+      t._(request[:app_profile_id]).must_equal expected_req_app_profile_id
+      self.call_count += 1
+      response
+    end
+
+    bigtable.service.mocked_client = mock
+
+    mutation_entries = req_entries.map do |r|
+      entry = Google::Cloud::Bigtable::MutationEntry.new(r.row_key)
+      entry.mutations.concat(r.mutations)
+      entry
+    end
+    responses = table.mutate_rows(mutation_entries)
+
+    _(mock.call_count).must_equal 1
+    _(responses.length).must_equal 2
+    _(responses[0].index).must_equal 0
+    _(responses[0].status.code).must_equal Google::Rpc::Code::OK
+    _(responses[1].index).must_equal 1
+    _(responses[1].status.code).must_equal Google::Rpc::Code::INTERNAL
+    _(responses[1].status.message).must_equal "Missing entry in MutateRows response"
+  end
 end

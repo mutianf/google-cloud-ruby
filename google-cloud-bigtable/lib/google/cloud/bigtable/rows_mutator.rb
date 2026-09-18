@@ -98,7 +98,19 @@ module Google
             app_profile_id: @table.app_profile_id,
             call_options: call_options
           )
-          [response.flat_map(&:entries), nil, cookies]
+          received_entries = response.flat_map(&:entries).each_with_object({}) do |entry, hash|
+            hash[entry.index] = entry
+          end
+          statuses = entries.map.with_index do |_, i|
+            received_entries[i] || Google::Cloud::Bigtable::V2::MutateRowsResponse::Entry.new(
+              index: i,
+              status: Google::Rpc::Status.new(
+                code: Google::Rpc::Code::INTERNAL,
+                message: "Missing entry in MutateRows response"
+              )
+            )
+          end
+          [statuses, nil, cookies]
         rescue GRPC::BadStatus => e
           info = e.status_details.find { |d| d.is_a? Google::Rpc::RetryInfo }
           delay = if info&.retry_delay
